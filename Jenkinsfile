@@ -6,77 +6,58 @@ pipeline {
         timestamps()
         disableConcurrentBuilds()
         timeout(time: 30, unit: 'MINUTES')
+        skipDefaultCheckout(true)
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                echo 'Getting latest source code'
                 checkout scm
-                bat 'git log -1 --oneline'
             }
         }
 
-        stage('Check Requirements') {
+        stage('Check Tools') {
             steps {
-                bat '''
-                if exist requirements.txt (
-                    echo Requirements file found
-                    type requirements.txt
-                ) else (
-                    echo requirements.txt not found
-                )
-                '''
-            }
-        }
-
-        stage('Check Docker') {
-            steps {
+                bat 'python --version'
                 bat 'docker --version'
                 bat 'docker compose version'
             }
         }
 
-        stage('Build') {
+        stage('Detect Application') {
             steps {
-                script {
-                    if (fileExists('docker-compose.yml')) {
-                        bat 'docker compose config'
-                        bat 'docker compose build'
-                    }
-                    else if (fileExists('compose.yaml')) {
-                        bat 'docker compose -f compose.yaml config'
-                        bat 'docker compose -f compose.yaml build'
-                    }
-                    else if (fileExists('Dockerfile')) {
-                        bat 'docker build -t my-application:latest .'
-                    }
-                    else {
-                        error('No Docker build file found')
-                    }
-                }
+                bat 'python detect.py'
             }
         }
 
-        stage('Deploy') {
+        stage('Generate Docker Files') {
             steps {
-                script {
-                    if (fileExists('docker-compose.yml')) {
-                        bat 'docker compose up -d'
-                    }
-                    else if (fileExists('compose.yaml')) {
-                        bat 'docker compose -f compose.yaml up -d'
-                    }
-                    else {
-                        echo 'Dockerfile only: image built, no Compose deployment'
-                    }
-                }
+                bat 'python generate.py'
             }
         }
 
-        stage('Check Containers') {
+        stage('Validate Compose') {
             steps {
+                bat 'docker compose -p sulu-auto -f docker-compose.generated.yml config'
+            }
+        }
+
+        stage('Build Images') {
+            steps {
+                bat 'docker compose -p sulu-auto -f docker-compose.generated.yml build'
+            }
+        }
+
+        stage('Deploy Application') {
+            steps {
+                bat 'docker compose -p sulu-auto -f docker-compose.generated.yml up -d --remove-orphans'
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                bat 'docker compose -p sulu-auto -f docker-compose.generated.yml ps'
                 bat 'docker ps'
             }
         }
@@ -84,11 +65,12 @@ pipeline {
 
     post {
         success {
-            echo 'Application deployed successfully!'
+            echo 'SUCCESS: Application deployed successfully!'
+            echo 'Check application at http://localhost:5002'
         }
 
         failure {
-            echo 'Pipeline failed. Check Console Output.'
+            echo 'ERROR: Pipeline failed. Check the Jenkins Console Output.'
         }
     }
 }
