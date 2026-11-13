@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Welcome! My application is running through Jenkins and Docker."
+    return "Updated successfully! Jenkins and Docker automation is working!"
 
 @app.route("/db")
 def database():
